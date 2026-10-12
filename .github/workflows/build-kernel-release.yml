@@ -114,7 +114,7 @@ jobs:
           
           input="${{ github.event.inputs.op_model }}"
           ksu_options_raw='${{ github.event.inputs.ksu_options }}'
-          if ! ksu_options_normalized=$(echo "$ksu_options_raw" | jq -c 'map(if .type then .type |= ascii_upcase | if .hash == null then if .type == "KSUN" then .hash = "dev" elif .type == "KSU" then .hash = "main" else .hash end else . end else error("No type found") end)' 2>&1); then
+          if ! ksu_options_normalized=$(echo "$ksu_options_raw" | jq -c 'map(if .type then .type |= ascii_upcase | if .hash == null then if .type == "KSUN" then .hash = "dev" elif .type == "KSU" then .hash = "main" elif .type == "BAKASU" then .hash = "main" else .hash end else . end else error("No type found") end)' 2>&1); then
             echo "::error::ksu_options validation failed: $ksu_options_normalized"
             exit 1
           fi
@@ -213,6 +213,9 @@ jobs:
           if [ "$ksu_type" == "KSUN" ]; then
             KSU_REPO_OWNER="KernelSU-Next"
             KSU_REPO_NAME="KernelSU-Next"
+          elif [ "$ksu_type" == "BAKASU" ]; then
+            KSU_REPO_OWNER="Baka-SU"
+            KSU_REPO_NAME="BakaSU"
           else
             KSU_REPO_OWNER="tiann"
             KSU_REPO_NAME="KernelSU"
@@ -450,7 +453,7 @@ jobs:
           ksu_ref="${{ fromJSON(steps.set-matrix.outputs.ksu_options_normalized)[0].hash }}"
           
           ksu_display=""
-          if [ "$ksu_type" = "KSUN" ] || [ "$ksu_type" = "KSU" ]; then
+          if [ "$ksu_type" = "KSUN" ] || [ "$ksu_type" = "KSU" ] || [ "$ksu_type" = "BAKASU" ]; then
             if [[ "$ksu_ref" =~ ^[0-9a-f]{40}$ ]]; then
               ksu_display+="📌 \`$ksu_type\`, \`$ksu_ref\`"
             else
@@ -728,6 +731,10 @@ jobs:
               echo "  - KSU Next: v${{ steps.build.outputs.ksu_version }}"
               echo "ksun_ver=${{ steps.build.outputs.ksu_version }}" >> "$GITHUB_OUTPUT"
               echo "ksu_ver=" >> "$GITHUB_OUTPUT"
+            elif [ "${{ matrix.ksu_type }}" = "BAKASU" ]; then
+              echo "  - BakaSU: v${{ steps.build.outputs.ksu_version }}"
+              echo "ksun_ver=" >> "$GITHUB_OUTPUT"
+              echo "ksu_ver=${{ steps.build.outputs.ksu_version }}" >> "$GITHUB_OUTPUT"
             else
               echo "  - KSU: v${{ steps.build.outputs.ksu_version }}"
               echo "ksun_ver=" >> "$GITHUB_OUTPUT"
@@ -779,6 +786,10 @@ jobs:
             if [ "${{ matrix.ksu_type }}" = "KSUN" ]; then
               cat >> $GITHUB_STEP_SUMMARY << EOF
           | **KSU Next** | v${{ steps.build.outputs.ksu_version }} |
+          EOF
+            elif [ "${{ matrix.ksu_type }}" = "BAKASU" ]; then
+              cat >> $GITHUB_STEP_SUMMARY << EOF
+          | **BakaSU** | v${{ steps.build.outputs.ksu_version }} |
           EOF
             else
               cat >> $GITHUB_STEP_SUMMARY << EOF
@@ -853,12 +864,23 @@ jobs:
       REPO_NAME: ${{ github.event.repository.name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SUSFS_BASE_VERSION: ${{ needs.set-op-model.outputs.susfs_base_version }}
-      RELEASE_NAME: '*TEST BUILD* OnePlus Kernels With KernelSU Next & SUSFS ${{ needs.set-op-model.outputs.susfs_base_version }} *TEST BUILD*'
+      KSU_OPTIONS_NORMALIZED: ${{ needs.set-op-model.outputs.ksu_options_normalized }}
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - name: 🏷️ Resolve release display name
+        run: |
+          ksu_type="$(echo '${{ needs.set-op-model.outputs.ksu_options_normalized }}' | jq -r '.[0].type')"
+          case "$ksu_type" in
+            KSUN)  ksu_label="KernelSU Next" ;;
+            BAKASU) ksu_label="BakaSU" ;;
+            *)     ksu_label="KernelSU" ;;
+          esac
+          echo "RELEASE_NAME=*TEST BUILD* OnePlus Kernels With $ksu_label & SUSFS ${{ needs.set-op-model.outputs.susfs_base_version }} *TEST BUILD*" >> "$GITHUB_ENV"
+          echo "Resolved release name: $ksu_label"
 
       - name: 🏷️ Generate and Create New Tag
         run: |
@@ -1062,6 +1084,11 @@ jobs:
           | **KernelSU Next Branch** | \`$ksu_display\` |
           | **KernelSU Next Version** | \`$ksu_ver_global\` |
           EOF
+          elif [ "$ksu_type" == "BAKASU" ]; then
+            cat << EOF >> release_notes.md
+          | **BakaSU Branch** | \`$ksu_display\` |
+          | **BakaSU Version** | \`$ksu_ver_global\` |
+          EOF
           elif [ "$ksu_type" == "KSU" ]; then
             cat << EOF >> release_notes.md
           | **KernelSU Branch** | \`$ksu_display\` |
@@ -1096,6 +1123,10 @@ jobs:
           if [ "$ksu_type" == "KSUN" ]; then
             cat << EOF >> release_notes.md
           - **KernelSU Next** - Next-generation kernel-level root solution
+          EOF
+          elif [ "$ksu_type" == "BAKASU" ]; then
+            cat << EOF >> release_notes.md
+          - **BakaSU** - Kernel-based root solution, forked from SukiSU-Ultra
           EOF
           elif [ "$ksu_type" == "KSU" ]; then
             cat << EOF >> release_notes.md
@@ -1159,6 +1190,11 @@ jobs:
           - **KernelSU Next Manager**  
             → [GitHub Release](https://github.com/KernelSU-Next/KernelSU-Next/releases)
           EOF
+          elif [ "$ksu_type" == "BAKASU" ]; then
+            cat << EOF >> release_notes.md
+          - **BakaSU Manager**
+            → [GitHub Release](https://github.com/Baka-SU/BakaSU/releases)
+          EOF
           elif [ "$ksu_type" == "KSU" ]; then
             cat << EOF >> release_notes.md
           - **KernelSU Manager**  
@@ -1195,8 +1231,24 @@ jobs:
               c. **KSU GKI**: if you are 100% sure you already flashed stock init_boot/boot/vendor_boot, no action is needed; otherwise, follow the same steps as KSU LKM.
               d. **APatch**: remove /data/adb contents to avoid leftover root conflicts **after flashing the AnyKernel3 ZIP**.
           3. Flash the ZIP to the active slot using Kernel Flasher.
+          EOF
+          if [ "$ksu_type" == "KSUN" ]; then
+            cat << EOF >> release_notes.md
           4. Install the KernelSU-Next Manager APK, same version as mentioned in the AnyKernel3 ZIP name.
           5. Open the KernelSU-Next app.
+          EOF
+          elif [ "$ksu_type" == "BAKASU" ]; then
+            cat << EOF >> release_notes.md
+          4. Install the BakaSU Manager APK, same version as mentioned in the AnyKernel3 ZIP name.
+          5. Open the BakaSU app.
+          EOF
+          else
+            cat << EOF >> release_notes.md
+          4. Install the KernelSU Manager APK, same version as mentioned in the AnyKernel3 ZIP name.
+          5. Open the KernelSU app.
+          EOF
+          fi
+          cat << EOF >> release_notes.md
           6. Reboot the device if you performed any cleanup in step 2.
           
           ---
