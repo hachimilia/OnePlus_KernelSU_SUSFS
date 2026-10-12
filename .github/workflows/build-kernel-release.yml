@@ -29,6 +29,16 @@ on:
           - android13-5.15
           - android12-5.10
         default: A14+15+16
+      soc_filter:
+        description: 'Optional SoC filter, comma-separated exact matches ANDed with op_model (e.g. canoe,pineapple). Empty = no filtering.'
+        required: false
+        type: string
+        default: ''
+      model_filter:
+        description: 'Optional model filter, comma-separated shell globs ANDed with op_model (e.g. OP15,OP-ACE-5*,*-6.6.89). Empty = no filtering.'
+        required: false
+        type: string
+        default: ''
       ksu_options:
         description: 'Enter KernelSU build json'
         required: true
@@ -113,6 +123,8 @@ jobs:
           echo "::group::Matrix generation"
           
           input="${{ github.event.inputs.op_model }}"
+          soc_filter_input="${{ github.event.inputs.soc_filter }}"
+          model_filter_input="${{ github.event.inputs.model_filter }}"
           ksu_options_raw='${{ github.event.inputs.ksu_options }}'
           if ! ksu_options_normalized=$(echo "$ksu_options_raw" | jq -c 'map(if .type then .type |= ascii_upcase | if .hash == null then if .type == "KSUN" then .hash = "dev" elif .type == "KSU" then .hash = "main" elif .type == "BAKASU" then .hash = "main" else .hash end else . end else error("No type found") end)' 2>&1); then
             echo "::error::ksu_options validation failed: $ksu_options_normalized"
@@ -170,6 +182,74 @@ jobs:
               ;;
           esac
           
+          # Optional fine-grained filters, ANDed with the op_model preset above.
+          # SoC filter: comma-separated exact matches on .soc
+          if [ -n "${soc_filter_input//[[:space:],]/}" ]; then
+            soc_ors=""
+            IFS=',' read -ra soc_items <<< "$soc_filter_input"
+            for item in "${soc_items[@]}"; do
+              item="$(echo "$item" | tr -d '[:space:]')"
+              [ -z "$item" ] && continue
+              item_esc="${item//\\/\\\\}"
+              item_esc="${item_esc//\"/\\\"}"
+              if [ -z "$soc_ors" ]; then
+                soc_ors=".soc == \"$item_esc\""
+              else
+                soc_ors="$soc_ors or .soc == \"$item_esc\""
+              fi
+            done
+            if [ -n "$soc_ors" ]; then
+              jq_filter="$jq_filter | map(select($soc_ors))"
+              echo "ℹ️  SoC filter applied: $soc_filter_input"
+            fi
+            # Warn about unknown SoC names, listing the valid ones
+            valid_socs=$(jq -r '.[].soc' matrix.json | sort -u | tr '\n' ' ')
+            for item in "${soc_items[@]}"; do
+              item="$(echo "$item" | tr -d '[:space:]')"
+              [ -z "$item" ] && continue
+              if ! jq -e --arg s "$item" 'any(.[]; .soc == $s)' matrix.json >/dev/null; then
+                echo "::warning::Unknown SoC '$item' in soc_filter. Valid values: $valid_socs"
+              fi
+            done
+          fi
+
+          # Model filter: comma-separated shell globs on .model (* and ? supported)
+          if [ -n "${model_filter_input//[[:space:],]/}" ]; then
+            model_alts=""
+            IFS=',' read -ra model_items <<< "$model_filter_input"
+            for item in "${model_items[@]}"; do
+              item="$(echo "$item" | tr -d '[:space:]')"
+              [ -z "$item" ] && continue
+              # Translate shell glob to anchored regex, char by char (avoids
+              # quoting pitfalls with brace expansion): keep * and ?, keep
+              # safe chars as-is, backslash-escape everything else, then
+              # restore the two wildcards.
+              rx=""
+              for (( ci=0; ci<${#item}; ci++ )); do
+                ch="${item:$ci:1}"
+                case "$ch" in
+                  '*'|'?') rx="$rx$ch" ;;
+                  [A-Za-z0-9_-]) rx="$rx$ch" ;;
+                  # NOTE: emit TWO backslashes - the pattern is parsed once
+                  # as a jq/JSON string literal before reaching the regex
+                  # engine, so every regex escape needs doubling here.
+                  *) rx="$rx\\\\$ch" ;;
+                esac
+              done
+              rx="${rx//\*/.*}"
+              rx="${rx//\?/.}"
+              if [ -z "$model_alts" ]; then
+                model_alts="$rx"
+              else
+                model_alts="$model_alts|$rx"
+              fi
+            done
+            if [ -n "$model_alts" ]; then
+              jq_filter="$jq_filter | map(select(.model | test(\"^($model_alts)$\")))"
+              echo "ℹ️  Model filter applied: $model_filter_input"
+            fi
+          fi
+
           filtered=$(jq -c "$jq_filter" matrix.json)
           count=$(jq 'length' <<<"$filtered")
           
@@ -182,6 +262,11 @@ jobs:
           
           if [ "$count" -eq 0 ]; then
             echo "::error::No config files found for input '$input' after applying filters!"
+            echo ""
+            echo "Active filters:"
+            echo "  - op_model: $input"
+            echo "  - soc_filter: ${soc_filter_input:-<none>}"
+            echo "  - model_filter: ${model_filter_input:-<none>}"
             echo ""
             echo "Available configurations:"
             jq -r '.[] | "  - \(.model) (\(.os_version), \(.android_version)-\(.kernel_version))"' matrix.json
@@ -479,6 +564,8 @@ jobs:
           EOF
           
             echo "- KSU Config: $ksu_display"
+            soc_f="${{ inputs.soc_filter }}"; [ -z "$soc_f" ] && soc_f="none"; echo "- SoC Filter: \`$soc_f\`"
+            model_f="${{ inputs.model_filter }}"; [ -z "$model_f" ] && model_f="none"; echo "- Model Filter: \`$model_f\`"
             echo "- Build Timestamp: $build_ts_display"
           
             cat << 'EOF'
