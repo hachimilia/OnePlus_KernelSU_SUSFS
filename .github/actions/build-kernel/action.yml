@@ -12,6 +12,7 @@ inputs:
     options:
       - KSUN
       - KSU
+      - BakaSU
   ksu_branch_or_hash:
     description: 'KSU branch or commit hash (empty = auto-detect by ksu_type)'
     required: false
@@ -987,6 +988,39 @@ runs:
         echo "✅ KernelSU added (commit: ${KSU_COMMIT_SHA:0:8})"
         echo "::endgroup::"
 
+    - name: Add BakaSU (The Sukisaku Project)
+      shell: bash
+      if: ${{ inputs.ksu_type == 'BakaSU' }}
+      run: |
+        set -euo pipefail
+        echo "::group::Add BakaSU"
+        cd "$KERNEL_PLATFORM_FOLDER"
+        echo "Adding BakaSU..."
+        KSU_INPUT="${{ inputs.ksu_branch_or_hash }}"
+        if [ -z "$KSU_INPUT" ]; then
+          curl --fail --location --proto '=https' -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -
+        else
+          curl --fail --location --proto '=https' -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -s "$KSU_INPUT"
+        fi
+
+        cd KernelSU
+
+        BASE_VERSION=30700
+        KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" $BASE_VERSION)
+
+        KSU_COMMIT_SHA=$(git rev-parse HEAD)
+        echo "KSU_COMMIT_SHA=$KSU_COMMIT_SHA" >> $GITHUB_ENV
+
+        cd ..
+
+        echo "BakaSU" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
+        echo "$KSU_VERSION" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
+        echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+
+        echo "BakaSU Version: $KSU_VERSION"
+        echo "✅ BakaSU added (commit: ${KSU_COMMIT_SHA:0:8})"
+        echo "::endgroup::"
+
     - name: Apply SUSFS Patches
       shell: bash
       if: ${{ env.OP_SUSFS == 'true' }}
@@ -1022,9 +1056,11 @@ runs:
               patch -p1 --forward --fuzz=3 < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_core_hook.c.patch"
               patch -p1 --forward --fuzz=3 < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_selinux.c.patch"
               patch -p1 --forward --fuzz=3 < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_ksud.c.patch"
-            else
+            elif [ "${{ inputs.ksu_type }}" = "KSU" ]; then
               cd "$KSU_FOLDER"
               patch -p1 --forward --fuzz=3 < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
+            else
+              echo "ℹ️ Skipping KernelSU folder patch for BakaSU"
             fi
             ;;
           "v1.5.9"|"v1.5.10"|"v1.5.11"|"v1.5.12")
@@ -1036,9 +1072,11 @@ runs:
                 patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.c.patch"
               done
               patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_kernel_compat.c.patch"
-            else
+            elif [ "${{ inputs.ksu_type }}" = "KSU" ]; then
               cd "$KSU_FOLDER"
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
+            else
+              echo "ℹ️ Skipping KernelSU folder patch for BakaSU"
             fi
             ;;
           "v2.0.0")
@@ -1061,9 +1099,11 @@ runs:
                 echo "Patching Multi-manager sepolicy Support for SusFS kernel!"
                 patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/multi_sepolicy_fix.patch"
               fi
-            else
+            elif [ "${{ inputs.ksu_type }}" = "KSU" ]; then
               cd "$KSU_FOLDER"
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
+            else
+              echo "ℹ️ Skipping KernelSU folder patch for BakaSU"
             fi
             ;;
           "v2.1.0")
@@ -1086,12 +1126,14 @@ runs:
                 echo "Patching Multi-manager sepolicy Support for SusFS kernel!"
                 patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/multi_sepolicy_fix.patch"
               fi
-            else
+            elif [ "${{ inputs.ksu_type }}" = "KSU" ]; then
               cd "$KSU_FOLDER"
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
+            else
+              echo "ℹ️ Skipping KernelSU folder patch for BakaSU"
             fi
             ;;
-          "v2.2.0")
+          "v2.2.0"|"v2.3.0")
             if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
               cd "$KSUN_FOLDER"
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
@@ -1103,9 +1145,11 @@ runs:
               patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/overwrite_hook_mode.patch"
               echo "Patching KSU_TOOLKIT Support for SusFS kernel!"
               patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/ksu_toolkit.patch"
-            else
+            elif [ "${{ inputs.ksu_type }}" = "KSU" ]; then
               cd "$KSU_FOLDER"
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
+            else
+              echo "ℹ️ Skipping KernelSU folder patch for BakaSU"
             fi
             ;;
           *)
@@ -1183,6 +1227,52 @@ runs:
         
         patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/50_add_susfs_in_${{ env.SUSFS_KERNEL_BRANCH }}.patch"
         
+        # BakaSU does not provide ksu_install_su_fd(): newer SUSFS patches inject
+        # a direct call into fs/exec.c that must be removed for BakaSU builds.
+        if [ "${{ inputs.ksu_type }}" = "BakaSU" ]; then
+          exec_file="./fs/exec.c"
+          sed -i '/extern int ksu_install_su_fd(void);/d; /^[[:space:]]*ksu_install_su_fd();$/d' "$exec_file"
+          if grep -Fq 'ksu_install_su_fd' "$exec_file"; then
+            echo "::error::Failed to remove unsupported BakaSU ksu_install_su_fd() call"
+            exit 1
+          fi
+        fi
+
+        # SUSFS targets the newer four-argument API, while some OnePlus 5.10
+        # trees still expose the original three-argument set_nameidata().
+        namei_file="./fs/namei.c"
+        old_set_nameidata_call='set_nameidata(nd, old_dfd, fake_filename, NULL);'
+        new_set_nameidata_call='set_nameidata(nd, old_dfd, fake_filename);'
+        if grep -Eq 'static void set_nameidata\(struct nameidata \*p, int dfd, struct filename \*name\)' "$namei_file"; then
+          nameidata_compat_count=$(grep -Fc "$old_set_nameidata_call" "$namei_file" || true)
+          if [ "$nameidata_compat_count" -gt 0 ]; then
+            sed -i "s|$old_set_nameidata_call|$new_set_nameidata_call|g" "$namei_file"
+            if grep -Fq "$old_set_nameidata_call" "$namei_file"; then
+              echo "::error::Failed to adapt SUSFS set_nameidata() calls"
+              exit 1
+            fi
+            echo "Adjusted $nameidata_compat_count SUSFS set_nameidata() call(s) for the three-argument kernel API"
+          fi
+        fi
+
+        # Android 16 / 6.12 OnePlus trees still expose the two-argument
+        # getname_flags() API, while the SUSFS patch passes a third audit
+        # pointer argument used by newer trees.
+        open_file="./fs/open.c"
+        old_getname_flags_call='getname_flags(filename, lookup_flags, NULL);'
+        new_getname_flags_call='getname_flags(filename, lookup_flags);'
+        if grep -Eq 'getname_flags\(const char __user \*, int\);' ./include/linux/fs.h; then
+          getname_flags_compat_count=$(grep -Fc "$old_getname_flags_call" "$open_file" || true)
+          if [ "$getname_flags_compat_count" -gt 0 ]; then
+            sed -i "s|$old_getname_flags_call|$new_getname_flags_call|g" "$open_file"
+            if grep -Fq "$old_getname_flags_call" "$open_file"; then
+              echo "::error::Failed to adapt SUSFS getname_flags() calls"
+              exit 1
+            fi
+            echo "Adjusted $getname_flags_compat_count SUSFS getname_flags() call(s) for the two-argument kernel API"
+          fi
+        fi
+
         # SUSFS's OPEN_REDIRECT code unconditionally calls VMA_PAD_START(), which
         # only exists on GKI branches that carry Google's page-size-migration
         # feature (added to each android version's kernel/common branch at a
@@ -2232,6 +2322,10 @@ runs:
         
         sed -i 's/do.check_boot_version=.*/do.check_boot_version=1/' anykernel.sh
         
+        if [ "${{ inputs.ksu_type }}" = "BakaSU" ]; then
+          cp "$GITHUB_ACTION_PATH/assets/bakasu-banner" banner
+        fi
+
         case "$OP_BRANCH" in
           wild/sm8850|wild/sm8845)
             echo "Applying BBG efisp abl whitelist control patch"
