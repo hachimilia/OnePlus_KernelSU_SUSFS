@@ -4,6 +4,7 @@
 
 [![KernelSU-Next](https://img.shields.io/badge/KernelSU_Next-Supported-green)](https://kernelsu-next.github.io/webpage/)
 [![KernelSU](https://img.shields.io/badge/KernelSU-Supported-green)](https://kernelsu.org/)
+[![BakaSU](https://img.shields.io/badge/BakaSU-Supported-green)](https://github.com/Baka-SU/BakaSU)
 [![Wild KSU](https://img.shields.io/badge/Wild_KSU-Not%20Supported-cb2431)](https://github.com/WildKernels/Wild_KSU/)
 [![SUSFS](https://img.shields.io/badge/SUSFS-Integrated-orange?logo=gitlab)](https://gitlab.com/simonpunk/susfs4ksu)
 [![OnePlusOSS Tracking Status](https://img.shields.io/badge/OnePlusOSS--Tracker-active-green)](https://github.com/WildKernels/OnePlus_KernelSU_SUSFS/blob/status-page/README.md)
@@ -67,7 +68,7 @@ Flashing this kernel will not void your warranty, but there is always a risk of 
 
 ## ✨ Features
 
-- 🔐 **KernelSU / KernelSU-Next**: A root solution for Android GKI devices that works in kernel mode and grants root permission to userspace applications directly in kernel space
+- 🔐 **KernelSU / KernelSU-Next / BakaSU**: A root solution for Android GKI devices that works in kernel mode and grants root permission to userspace applications directly in kernel space. Select the variant via the `ksu_options` workflow input, e.g. `[{"type":"BAKASU","hash":"main"}]` (kernel version = 30700 + upstream commit count; BakaSU Manager required, see release notes)
 - 🔥 **WildKSU Manager Support**: Support for the Root Manager developed by our team with lots of customisations
 - 🥷 **SUSFS**: An addon root hiding kernel patches and userspace module for KernelSU
 - 🛡️ **BBG**: LSM-based Baseband Guard security to protect critical device partitions. abl/efisp can be added to whitelist for efisp exploit devices.
