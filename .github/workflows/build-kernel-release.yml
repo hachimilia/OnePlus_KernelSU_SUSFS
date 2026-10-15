@@ -30,12 +30,12 @@ on:
           - android12-5.10
         default: A14+15+16
       soc_filter:
-        description: 'Optional SoC filter, comma-separated exact matches ANDed with op_model (e.g. canoe,pineapple). Empty = no filtering.'
+        description: 'Optional SoC filter, comma-separated exact matches ANDed with op_model. Empty = no filtering.'
         required: false
         type: string
         default: ''
       model_filter:
-        description: 'Optional model filter, comma-separated shell globs ANDed with op_model (e.g. OP15,OP-ACE-5*,*-6.6.89). Empty = no filtering.'
+        description: 'Optional model filter, comma-separated shell globs ANDed with op_model. Empty = no filtering.'
         required: false
         type: string
         default: ''
@@ -43,7 +43,7 @@ on:
         description: 'Enter KernelSU build json'
         required: true
         type: string
-        default: '[{"type":"ksun","hash":"dev"}]'
+        default: '[{"type":"BAKASU","hash":"main"}]'
       optimize_level:
         description: "Compiler optimization level"
         required: true
